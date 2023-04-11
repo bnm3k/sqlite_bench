@@ -81,7 +81,48 @@ Assumption invalidated, so the error is probably at some other level.
 
 My second hunch is that once a connection is used for Insert/Update/Drop, it
 acquires a write-lock that it holds throughout the entirety of the connection
-rather than per each statement execution. I'll definitely have to dig into
-SQLite docs/internals at some point to confirm this but for the time-being, I'll
-go by rustqlite's docs which don't (seem to) indicate that connections are
-created lazily.
+rather than per each statement execution/transaction. I'll definitely have to
+dig into SQLite docs/internals at some point to confirm this but for the
+time-being, I'll go by rustqlite's docs which don't (seem to) indicate that
+connections are created lazily.
+
+Therefore, a quick solution might be to create a connection for each insert:
+
+```rust
+for _ in 0..num_inserts_per_thread {
+    let u = User::gen();
+    let conn = rusqlite::Connection::open("db.sqlite").unwrap();
+    conn.execute(
+        "INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)",
+        (&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username),
+    )
+    .unwrap();
+}
+```
+
+This still doesn't prevent the `DatabaseBusy` error so I'm guessing I'll have to
+treat it as a retriable error and ignore it:
+
+```
+let mut inserted = 0;
+while inserted < num_inserts_per_thread {
+    let u = User::gen();
+    let conn = get_conn().unwrap();
+    let res = conn.execute(
+        "INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)",
+        (&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username),
+    );
+    if let Err(e) = res {
+        if e.sqlite_error_code() != Some(rusqlite::ErrorCode::DatabaseBusy) {
+            panic!("{}", e);
+        }
+    } else {
+        inserted += 1;
+    }
+}
+```
+
+One advantage of creating a connection for each insert is that threads can do
+inserts in parallel rather than serially.
+
+A different solution is to use connection pooling:
