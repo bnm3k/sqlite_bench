@@ -37,18 +37,6 @@ fn init_db(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn run_inserts(conn: &rusqlite::Connection, count: u64) -> rusqlite::Result<()> {
-    for _ in 0..count {
-        let u = User::gen();
-        conn.execute(
-            "INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)",
-            (&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username),
-        )?;
-    }
-
-    Ok(())
-}
-
 fn run_reads(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     let mut stmt = conn.prepare("SELECT count(*) from users")?;
     let count: u64 = stmt.query_row([], |row| row.get(0))?;
@@ -109,11 +97,25 @@ fn main() -> anyhow::Result<()> {
     let mut handles = Vec::with_capacity(num_threads as usize);
     for i in 1..=num_threads {
         let handle = thread::spawn(move || -> anyhow::Result<()> {
-            info!("[thread {}] start, get conn", i);
-            let conn = get_conn()?;
-            info!("[thread {}] got conn", i);
-            run_inserts(&conn, num_inserts_per_thread).expect("inserts should run smoothly");
-            info!("[thread {}] complete", i);
+            let thread_id = format!("[thread {}]", i);
+            info!("{thread_id} start");
+            let mut inserted = 0;
+            while inserted < num_inserts_per_thread {
+                let u = User::gen();
+                let conn = get_conn().unwrap();
+                let res = conn.execute(
+                    "INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)",
+                    (&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username),
+                );
+                if let Err(e) = res {
+                    if e.sqlite_error_code() != Some(rusqlite::ErrorCode::DatabaseBusy) {
+                        panic!("{}", e);
+                    }
+                } else {
+                    inserted += 1;
+                }
+            }
+            info!("{thread_id} complete");
             Ok(())
         });
         handles.push(handle);
@@ -127,8 +129,10 @@ fn main() -> anyhow::Result<()> {
     let duration = start.elapsed();
     let inserts_per_sec = num_inserts as f64 / duration.as_secs_f64();
     println!(
-        "Benchmark: insert {} records: {:?} ({} inserts/s)",
+        "Benchmark: insert {} records ({}/{}): {:?} ({} inserts/s)",
         num_inserts.separate_with_commas(),
+        num_inserts_per_thread.separate_with_commas(),
+        num_threads,
         duration,
         inserts_per_sec.round().separate_with_commas()
     );
