@@ -107,10 +107,13 @@ fn main() -> anyhow::Result<()> {
 
     // run concurrent inserts
     let mut handles = Vec::with_capacity(num_threads as usize);
-    for _ in 0..num_threads {
+    for i in 1..=num_threads {
         let handle = thread::spawn(move || -> anyhow::Result<()> {
+            info!("[thread {}] start, get conn", i);
             let conn = get_conn()?;
+            info!("[thread {}] got conn", i);
             run_inserts(&conn, num_inserts_per_thread).expect("inserts should run smoothly");
+            info!("[thread {}] complete", i);
             Ok(())
         });
         handles.push(handle);
