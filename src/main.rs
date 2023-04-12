@@ -106,14 +106,14 @@ fn main() -> anyhow::Result<()> {
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             conn.pragma_update(None, "temp_store", "MEMORY")?;
             conn.pragma_update(None, "locking_mode", "EXCLUSIVE")?;
-            conn.pragma_update(None, "cache_size", "30000000000")?;
+            conn.pragma_update(None, "cache_size", "1073741824")?;
+
+            let mut stmt =
+                conn.prepare("INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)")?;
             for _ in 0..num_inserts_per_thread {
                 let u = User::gen();
-                conn.execute(
-                    "INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)",
-                    (&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username),
-                )
-                .unwrap();
+                stmt.execute((&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username))
+                    .unwrap();
             }
             info!("{thread_id} complete");
             Ok(())
