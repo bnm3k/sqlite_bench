@@ -25,6 +25,8 @@ impl User {
 }
 
 fn init_db(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    // only set if not 'memory'
+    conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.execute(
         "CREATE TABLE users(
             id BLOB PRIMARY KEY NOT NULL,
@@ -92,6 +94,7 @@ fn main() -> anyhow::Result<()> {
 
     // start timing
     let start = Instant::now();
+    let num_threads = 1; // focus on single-threaded for now
 
     // run concurrent inserts
     let mut handles = Vec::with_capacity(num_threads as usize);
@@ -99,21 +102,15 @@ fn main() -> anyhow::Result<()> {
         let handle = thread::spawn(move || -> anyhow::Result<()> {
             let thread_id = format!("[thread {}]", i);
             info!("{thread_id} start");
-            let mut inserted = 0;
-            while inserted < num_inserts_per_thread {
+            let conn = get_conn().unwrap();
+            conn.pragma_update(None, "synchronous", "NORMAL")?;
+            for _ in 0..num_inserts_per_thread {
                 let u = User::gen();
-                let conn = get_conn().unwrap();
-                let res = conn.execute(
+                conn.execute(
                     "INSERT INTO users(id, created_at, username) VALUES (?, ?, ?)",
                     (&u.id.to_string(), &u.created_at.to_rfc3339(), &u.username),
-                );
-                if let Err(e) = res {
-                    if e.sqlite_error_code() != Some(rusqlite::ErrorCode::DatabaseBusy) {
-                        panic!("{}", e);
-                    }
-                } else {
-                    inserted += 1;
-                }
+                )
+                .unwrap();
             }
             info!("{thread_id} complete");
             Ok(())
