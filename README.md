@@ -125,4 +125,16 @@ while inserted < num_inserts_per_thread {
 One advantage of creating a connection for each insert is that threads can do
 inserts in parallel rather than serially.
 
-A different solution is to use connection pooling:
+## Using connection pooling.
+
+A slightly different solution is to use connection pooling. I am familiar with
+connection pooling courtesy of Postgres-isms but it 'feels' awkward to use
+pooling when the database is right there embedded in the process rather than
+over across a network. I'll get back to this later on.
+
+## Transactions
+
+Alternatively, I could use explicit transactions for each insert. My guess is
+that on commit/rollback, the connection cedes the write lock and on the next
+insert within a given connection has to re-acquire the lock. I'll try this out
+too to see if it works, plus also read the docs to see if this is the case.
