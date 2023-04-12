@@ -104,6 +104,9 @@ fn main() -> anyhow::Result<()> {
             info!("{thread_id} start");
             let conn = get_conn().unwrap();
             conn.pragma_update(None, "synchronous", "NORMAL")?;
+            conn.pragma_update(None, "temp_store", "MEMORY")?;
+            conn.pragma_update(None, "locking_mode", "EXCLUSIVE")?;
+            conn.pragma_update(None, "cache_size", "30000000000")?;
             for _ in 0..num_inserts_per_thread {
                 let u = User::gen();
                 conn.execute(
