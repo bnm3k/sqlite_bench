@@ -138,3 +138,20 @@ Alternatively, I could use explicit transactions for each insert. My guess is
 that on commit/rollback, the connection cedes the write lock and on the next
 insert within a given connection has to re-acquire the lock. I'll try this out
 too to see if it works, plus also read the docs to see if this is the case.
+
+## Optimizing single-threaded inserts.
+
+Back to single-thread world; the roughly 750 inserts per second is still quite
+low. Let's try some optimizations
+
+1. Set jounal mode to WAL. This immediately increases insert speeds from ~750 to
+   ~2500.
+2. Set synchronous to `NORMAL`. This gets us to ~25,000 inserts per second.
+
+Other optimizations I've tried event though they don't seem to have a huge
+effect:
+
+- Set `temp_store` to`MEMORY`
+- Set `locking_mode` to`EXCLUSIVE`
+- Set `cache_size` to ~1GB
+- Use prepared statements
